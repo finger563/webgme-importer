@@ -1,0 +1,13 @@
+{
+  "components": {
+    "plugins": {
+      "Importer": {
+        "src": "src/plugins/Importer",
+        "test": "test/plugins/Importer"
+      }
+    }
+  },
+  "dependencies": {
+    "plugins": {}
+  }
+}
