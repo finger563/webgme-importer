@@ -10,11 +10,17 @@
 define([
     'plugin/PluginConfig',
     'text!./metadata.json',
-    'plugin/PluginBase'
+    'plugin/PluginBase',
+    'common/meta',
+    'importer/modelImporter',
+    'q'
 ], function (
     PluginConfig,
     pluginMetadata,
-    PluginBase) {
+    PluginBase,
+    MetaTypes,
+    modelImporter,
+    Q) {
     'use strict';
 
     pluginMetadata = JSON.parse(pluginMetadata);
@@ -29,6 +35,7 @@ define([
     var Importer = function () {
         // Call base class' constructor.
         PluginBase.call(this);
+        this.metaTypes = MetaTypes;
         this.pluginMetadata = pluginMetadata;
     };
 
@@ -43,6 +50,21 @@ define([
     Importer.prototype = Object.create(PluginBase.prototype);
     Importer.prototype.constructor = Importer;
 
+    Importer.prototype.notify = function(level, msg) {
+	var self = this;
+	var prefix = self.projectId + '::' + self.projectName + '::' + level + '::';
+	if (level=='error')
+	    self.logger.error(msg);
+	else if (level=='debug')
+	    self.logger.debug(msg);
+	else if (level=='info')
+	    self.logger.info(msg);
+	else if (level=='warning')
+	    self.logger.warn(msg);
+	self.createMessage(self.activeNode, msg, level);
+	self.sendNotification(prefix+msg);
+    };
+
     /**
      * Main function for the plugin to execute. This will perform the execution.
      * Notes:
@@ -55,36 +77,44 @@ define([
     Importer.prototype.main = function (callback) {
         // Use self to access core, project, result, logger etc from PluginBase.
         // These are all instantiated at this point.
-        var self = this,
-            nodeObject;
+        var self = this;
+        self.result.success = false;
 
+        self.updateMETA(self.metaTypes);
 
-        // Using the logger.
-        self.logger.debug('This is a debug message.');
-        self.logger.info('This is an info message.');
-        self.logger.warn('This is a warning message.');
-        self.logger.error('This is an error message.');
+	// What did the user select for our configuration?
+	var currentConfig = self.getCurrentConfig();
+	self.modelHash = currentConfig.modelHash;
+	
+	modelImporter.notify = function(level, msg) {self.notify(level, msg);}
 
-        // Using the coreAPI to make changes.
-
-        nodeObject = self.activeNode;
-
-        self.core.setAttribute(nodeObject, 'name', 'My new obj');
-        self.core.setRegistry(nodeObject, 'position', {x: 70, y: 70});
-
-
-        // This will save the changes. If you don't want to save;
-        // exclude self.save and call callback directly from this scope.
-        self.save('Importer updated model.')
-            .then(function () {
-                self.result.setSuccess(true);
-                callback(null, self.result);
-            })
-            .catch(function (err) {
-                // Result success is false at invocation.
-                callback(err, self.result);
-            });
-
+	return self.blobClient.getMetadata(self.modelHash)
+	    .then((modelMetadata) => {
+		self.modelName = modelMetadata.name;
+		return self.blobClient.getObjectAsString(self.modelHash);
+	    })
+	    .then((modelString) => {
+		var modelJSON = JSON.parse(modelString);
+		return modelImporter.importModel(self.core, self.META, self.metaTypes, modelJSON, self.activeNode)
+	    })
+	    .then(function() {
+		// This will save the changes. If you don't want to save;
+		self.notify('info','Loaded ' + self.modelName + ', saving updates.');
+		return self.save('Imported ' + self.modelName);
+	    })
+	    .then(function (err) {
+		if (err.status != 'SYNCED') {
+		    throw new String('Couldnt write to model!');
+		}
+		self.result.setSuccess(true);
+		callback(null, self.result);
+	    })
+	    .catch(function(err) {
+        	self.notify('error', err);
+		self.result.setSuccess(false);
+		callback(err, self.result);
+	    })
+		.done();
     };
 
     return Importer;
