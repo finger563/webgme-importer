@@ -11,14 +11,12 @@ define([
     'plugin/PluginConfig',
     'text!./metadata.json',
     'plugin/PluginBase',
-    'common/meta',
     'importer/modelImporter',
     'q'
 ], function (
     PluginConfig,
     pluginMetadata,
     PluginBase,
-    MetaTypes,
     modelImporter,
     Q) {
     'use strict';
@@ -35,7 +33,6 @@ define([
     var Importer = function () {
         // Call base class' constructor.
         PluginBase.call(this);
-        this.metaTypes = MetaTypes;
         this.pluginMetadata = pluginMetadata;
     };
 
@@ -80,6 +77,7 @@ define([
         var self = this;
         self.result.success = false;
 
+	self.metaTypes = {};
         self.updateMETA(self.metaTypes);
 
 	// What did the user select for our configuration?
@@ -95,7 +93,7 @@ define([
 	    })
 	    .then((modelString) => {
 		var modelJSON = JSON.parse(modelString);
-		return modelImporter.importModel(self.core, self.META, self.metaTypes, modelJSON, self.activeNode)
+		return modelImporter.importModel(self.core, self.META, modelJSON, self.activeNode)
 	    })
 	    .then(function() {
 		// This will save the changes. If you don't want to save;
